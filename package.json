@@ -1,0 +1,13 @@
+{
+    "name": "tetris",
+    "version": "1.0.0",
+    "description": "シンプルなテトリスゲーム",
+    "main": "dist/game.js",
+    "scripts": {
+        "build": "tsc",
+        "watch": "tsc -w"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0"
+    }
+} 
