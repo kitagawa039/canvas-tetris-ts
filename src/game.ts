@@ -51,11 +51,17 @@ const COLORS = {
 class Tetris {
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
+    private nextBlockCanvas: HTMLCanvasElement;
+    private nextBlockCtx: CanvasRenderingContext2D;
     private grid: number[][];
     private currentPiece: { shape: number[][]; x: number; y: number; type: string } = {
         shape: [],
         x: 0,
         y: 0,
+        type: ''
+    };
+    private nextPiece: { shape: number[][]; type: string } = {
+        shape: [],
         type: ''
     };
     private score: number;
@@ -67,6 +73,8 @@ class Tetris {
     constructor() {
         this.canvas = document.getElementById('tetris') as HTMLCanvasElement;
         this.ctx = this.canvas.getContext('2d')!;
+        this.nextBlockCanvas = document.getElementById('next-block') as HTMLCanvasElement;
+        this.nextBlockCtx = this.nextBlockCanvas.getContext('2d')!;
         this.blockSize = 20;
         this.grid = Array(20).fill(null).map(() => Array(10).fill(0));
         this.score = 0;
@@ -83,15 +91,28 @@ class Tetris {
         this.gameLoop();
     }
 
-    private spawnPiece(): void {
+    private generateRandomPiece(): { shape: number[][]; type: string } {
         const types = Object.keys(SHAPES);
         const type = types[Math.floor(Math.random() * types.length)];
-        this.currentPiece = {
+        return {
             shape: SHAPES[type as keyof typeof SHAPES],
-            x: Math.floor((10 - SHAPES[type as keyof typeof SHAPES][0].length) / 2),
-            y: 0,
             type
         };
+    }
+
+    private spawnPiece(): void {
+        if (!this.nextPiece.shape.length) {
+            this.nextPiece = this.generateRandomPiece();
+        }
+        
+        this.currentPiece = {
+            shape: this.nextPiece.shape,
+            x: Math.floor((10 - this.nextPiece.shape[0].length) / 2),
+            y: 0,
+            type: this.nextPiece.type
+        };
+        
+        this.nextPiece = this.generateRandomPiece();
 
         if (this.checkCollision()) {
             this.gameOver = true;
@@ -162,10 +183,12 @@ class Tetris {
                     const boardX = this.currentPiece.x + x;
                     const boardY = this.currentPiece.y + y;
 
+                    // boardX >= 10 を boardX >= this.grid[0].length に変更
+                    // boardY >= 20 を boardY >= this.grid.length に変更
                     if (
                         boardX < 0 ||
-                        boardX >= 10 ||
-                        boardY >= 20 ||
+                        boardX >= this.grid[0].length ||
+                        boardY >= this.grid.length ||
                         (boardY >= 0 && this.grid[boardY][boardX])
                     ) {
                         return true;
@@ -184,7 +207,7 @@ class Tetris {
                     const boardY = this.currentPiece.y + y;
                     const boardX = this.currentPiece.x + x;
                     if (boardY >= 0) {
-                        this.grid[boardY][boardX] = 1;
+                        this.grid[boardY][boardX] = this.currentPiece.type as any;
                     }
                 }
             }
@@ -201,14 +224,72 @@ class Tetris {
         }
     }
 
+    private drawGrid(): void {
+        this.ctx.strokeStyle = '#333';
+        this.ctx.lineWidth = 0.5;
+        
+        for (let y = 0; y <= this.grid.length; y++) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, y * this.blockSize);
+            this.ctx.lineTo(this.canvas.width, y * this.blockSize);
+            this.ctx.stroke();
+        }
+        
+        for (let x = 0; x <= 10; x++) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x * this.blockSize, 0);
+            this.ctx.lineTo(x * this.blockSize, this.canvas.height);
+            this.ctx.stroke();
+        }
+    }
+
+    private drawNextBlock(): void {
+        this.nextBlockCtx.clearRect(0, 0, this.nextBlockCanvas.width, this.nextBlockCanvas.height);
+        
+        this.nextBlockCtx.fillStyle = '#1a1a1a';
+        this.nextBlockCtx.fillRect(0, 0, this.nextBlockCanvas.width, this.nextBlockCanvas.height);
+        
+        this.nextBlockCtx.fillStyle = '#fff';
+        this.nextBlockCtx.font = '16px Arial';
+        this.nextBlockCtx.fillText('Next Block', 20, 20);
+        
+        if (this.nextPiece && this.nextPiece.shape.length) {
+            const blockSize = 20;
+            const offsetX = (this.nextBlockCanvas.width - this.nextPiece.shape[0].length * blockSize) / 2;
+            const offsetY = (this.nextBlockCanvas.height - this.nextPiece.shape.length * blockSize) / 2 + 10;
+            
+            for (let y = 0; y < this.nextPiece.shape.length; y++) {
+                for (let x = 0; x < this.nextPiece.shape[y].length; x++) {
+                    if (this.nextPiece.shape[y][x]) {
+                        this.nextBlockCtx.fillStyle = COLORS[this.nextPiece.type as keyof typeof COLORS];
+                        this.nextBlockCtx.fillRect(
+                            offsetX + x * blockSize,
+                            offsetY + y * blockSize,
+                            blockSize - 1,
+                            blockSize - 1
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     private draw(): void {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        this.ctx.fillStyle = '#1a1a1a';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        this.drawGrid();
 
         // グリッドの描画
         for (let y = 0; y < this.grid.length; y++) {
             for (let x = 0; x < this.grid[y].length; x++) {
                 if (this.grid[y][x]) {
-                    this.drawBlock(x, y, '#333');
+                    const pieceType = this.grid[y][x] as unknown as string;
+                    const color = pieceType && COLORS[pieceType as keyof typeof COLORS] ? 
+                                COLORS[pieceType as keyof typeof COLORS] : '#555';
+                    this.drawBlock(x, y, color);
                 }
             }
         }
@@ -228,14 +309,18 @@ class Tetris {
                 }
             }
         }
+        
+        this.drawNextBlock();
 
         // スコアの表示
-        this.ctx.fillStyle = '#000';
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(0, 0, this.canvas.width, 50);
+        this.ctx.fillStyle = '#fff';
         this.ctx.font = '20px Arial';
         this.ctx.fillText(`Score: ${this.score}`, 10, 30);
 
         if (this.gameOver) {
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
             this.ctx.fillStyle = '#fff';
             this.ctx.font = '30px Arial';
@@ -266,4 +351,4 @@ class Tetris {
 }
 
 // ゲームの開始
-new Tetris(); 
+new Tetris();            
